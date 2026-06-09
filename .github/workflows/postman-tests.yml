@@ -127,12 +127,6 @@ jobs:
           npm install -g newman
           sudo apt-get update -qq
           sudo apt-get install -y jq bc
-         
-      - name: Baixar histórico existente
-        run: |
-          git clone --depth=1 --branch gh-pages https://github.com/${{ github.repository }} gh-pages || true
-          mkdir -p public
-          cp -r gh-pages/* public/ 2>/dev/null || true
 
       # Baixa os reports de cada fase
       - uses: actions/download-artifact@v4
@@ -154,45 +148,60 @@ jobs:
 
       - name: Extrair métricas por fase
         run: |
-          extract() {
+          # Lê total/failed de um report e devolve via stdout "TOTAL FAILED"
+          read_report() {
             local file=$1
-            local prefix=$2
             if [ -f "$file" ]; then
-              TOTAL=$(jq '.run.stats.assertions.total // 0' "$file")
-              FAILED=$(jq '.run.stats.assertions.failed // 0' "$file")
-              PASSED=$(jq '.run.stats.assertions.total - .run.stats.assertions.failed // 0' "$file")
-              if [ "$TOTAL" -gt 0 ]; then
-                SUCCESS=$(awk "BEGIN {printf \"%.2f\", ($PASSED/$TOTAL)*100}")
-              else
-                SUCCESS="0.00"
-              fi
+              local t=$(jq '.run.stats.assertions.total // 0' "$file")
+              local f=$(jq '.run.stats.assertions.failed // 0' "$file")
+              echo "$t $f"
             else
-              TOTAL=0; FAILED=0; PASSED=0; SUCCESS="0.00"
+              echo "0 0"
             fi
-            echo "${prefix}_TOTAL=$TOTAL"     >> $GITHUB_ENV
-            echo "${prefix}_FAILED=$FAILED"   >> $GITHUB_ENV
-            echo "${prefix}_PASSED=$PASSED"   >> $GITHUB_ENV
-            echo "${prefix}_SUCCESS=$SUCCESS" >> $GITHUB_ENV
           }
 
-          extract reports/smoke-report.json      SMOKE
-          extract reports/validation-report.json VALIDATION
-          extract reports/business-report.json   BUSINESS
-          extract reports/alteracao-report.json  ALTERACAO
+          read read_smoke_t  read_smoke_f  <<< $(read_report reports/smoke-report.json)
+          read read_valid_t  read_valid_f  <<< $(read_report reports/validation-report.json)
+          read read_biz_t    read_biz_f    <<< $(read_report reports/business-report.json)
+          read read_alt_t    read_alt_f    <<< $(read_report reports/alteracao-report.json)
 
-          # Totais consolidados
-          T=$(( ${SMOKE_TOTAL:-0} + ${VALIDATION_TOTAL:-0} + ${BUSINESS_TOTAL:-0} + ${ALTERACAO_TOTAL:-0} ))
-          F=$(( ${SMOKE_FAILED:-0} + ${VALIDATION_FAILED:-0} + ${BUSINESS_FAILED:-0} + ${ALTERACAO_FAILED:-0} ))
-          P=$(( T - F ))
-          if [ "$T" -gt 0 ]; then
-            S=$(awk "BEGIN {printf \"%.2f\", ($P/$T)*100}")
-          else
-            S="0.00"
-          fi
-          echo "TOTAL=$T"   >> $GITHUB_ENV
-          echo "FAILED=$F"  >> $GITHUB_ENV
-          echo "PASSED=$P"  >> $GITHUB_ENV
-          echo "SUCCESS=$S" >> $GITHUB_ENV
+          calc_success() {
+            local p=$1 t=$2
+            if [ "$t" -gt 0 ]; then awk "BEGIN {printf \"%.2f\", ($p/$t)*100}"
+            else echo "0.00"; fi
+          }
+
+          SMOKE_T=$read_smoke_t;  SMOKE_F=$read_smoke_f;  SMOKE_P=$((SMOKE_T - SMOKE_F))
+          VALID_T=$read_valid_t;  VALID_F=$read_valid_f;  VALID_P=$((VALID_T - VALID_F))
+          BIZ_T=$read_biz_t;      BIZ_F=$read_biz_f;      BIZ_P=$((BIZ_T   - BIZ_F))
+          ALT_T=$read_alt_t;      ALT_F=$read_alt_f;      ALT_P=$((ALT_T   - ALT_F))
+
+          SMOKE_S=$(calc_success $SMOKE_P $SMOKE_T)
+          VALID_S=$(calc_success $VALID_P $VALID_T)
+          BIZ_S=$(calc_success   $BIZ_P   $BIZ_T)
+          ALT_S=$(calc_success   $ALT_P   $ALT_T)
+
+          # Totais consolidados (mesma sessão bash, sem depender de $GITHUB_ENV)
+          TOTAL=$(( SMOKE_T + VALID_T + BIZ_T + ALT_T ))
+          FAILED=$(( SMOKE_F + VALID_F + BIZ_F + ALT_F ))
+          PASSED=$(( TOTAL - FAILED ))
+          SUCCESS=$(calc_success $PASSED $TOTAL)
+
+          # Exporta tudo
+          {
+            echo "SMOKE_TOTAL=$SMOKE_T";  echo "SMOKE_FAILED=$SMOKE_F";  echo "SMOKE_PASSED=$SMOKE_P";  echo "SMOKE_SUCCESS=$SMOKE_S"
+            echo "VALIDATION_TOTAL=$VALID_T"; echo "VALIDATION_FAILED=$VALID_F"; echo "VALIDATION_PASSED=$VALID_P"; echo "VALIDATION_SUCCESS=$VALID_S"
+            echo "BUSINESS_TOTAL=$BIZ_T"; echo "BUSINESS_FAILED=$BIZ_F"; echo "BUSINESS_PASSED=$BIZ_P"; echo "BUSINESS_SUCCESS=$BIZ_S"
+            echo "ALTERACAO_TOTAL=$ALT_T"; echo "ALTERACAO_FAILED=$ALT_F"; echo "ALTERACAO_PASSED=$ALT_P"; echo "ALTERACAO_SUCCESS=$ALT_S"
+            echo "TOTAL=$TOTAL"; echo "FAILED=$FAILED"; echo "PASSED=$PASSED"; echo "SUCCESS=$SUCCESS"
+          } >> $GITHUB_ENV
+
+          echo "=== Métricas calculadas ==="
+          echo "Smoke:      $SMOKE_P/$SMOKE_T ($SMOKE_S%)"
+          echo "Validation: $VALID_P/$VALID_T ($VALID_S%)"
+          echo "Business:   $BIZ_P/$BIZ_T ($BIZ_S%)"
+          echo "Alteração:  $ALT_P/$ALT_T ($ALT_S%)"
+          echo "TOTAL:      $PASSED/$TOTAL ($SUCCESS%)"
 
       - name: Gerar timestamp
         run: echo "DATE=$(date +'%Y-%m-%d_%H-%M-%S')" >> $GITHUB_ENV
