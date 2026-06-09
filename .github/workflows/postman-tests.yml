@@ -22,7 +22,13 @@ jobs:
             --env-var vSenha=$VSENHA \
             --folder "02-PEDIDO_CATALOGO" \
             --folder "SMOKE" \
-            --reporters cli
+            --reporters cli,json \
+            --reporter-json-export smoke-report.json
+        continue-on-error: true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: smoke-report
+          path: smoke-report.json
 
   validation:
     name: Pedido Catalogo - Validation
@@ -41,7 +47,13 @@ jobs:
             --env-var vSenha=$VSENHA \
             --folder "02-PEDIDO_CATALOGO" \
             --folder "VALIDATION" \
-            --reporters cli
+            --reporters cli,json \
+            --reporter-json-export validation-report.json
+        continue-on-error: true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: validation-report
+          path: validation-report.json
 
   business:
     name: Pedido Catalogo - Business Rule
@@ -60,7 +72,13 @@ jobs:
             --env-var vSenha=$VSENHA \
             --folder "02-PEDIDO_CATALOGO" \
             --folder "BUSINESS_RULE" \
-            --reporters cli
+            --reporters cli,json \
+            --reporter-json-export business-report.json
+        continue-on-error: true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: business-report
+          path: business-report.json
 
   alteracao:
     name: Pedido Catalogo - Alteracao
@@ -79,7 +97,13 @@ jobs:
             --env-var vSenha=$VSENHA \
             --folder "02-PEDIDO_CATALOGO" \
             --folder "ALTERACAO" \
-            --reporters cli
+            --reporters cli,json \
+            --reporter-json-export alteracao-report.json
+        continue-on-error: true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: alteracao-report
+          path: alteracao-report.json
 
   dashboard:
     name: Gerar Dashboard
@@ -101,52 +125,105 @@ jobs:
 
       - run: |
           npm install -g newman
-          sudo apt-get update
+          sudo apt-get update -qq
           sudo apt-get install -y jq bc
 
-      - name: Rodar testes consolidados
-        run: |
-          newman run api-v1.0.postman_collection.json \
-            -e HOM.postman_environment.json \
-            --env-var vUsuario=$VUSUARIO \
-            --env-var vSenha=$VSENHA \
-            --folder "02-PEDIDO_CATALOGO" \
-            --reporters cli,json \
-            --reporter-json-export report.json
-        continue-on-error: true
+      # Baixa os reports de cada fase
+      - uses: actions/download-artifact@v4
+        with:
+          name: smoke-report
+          path: reports/
+      - uses: actions/download-artifact@v4
+        with:
+          name: validation-report
+          path: reports/
+      - uses: actions/download-artifact@v4
+        with:
+          name: business-report
+          path: reports/
+      - uses: actions/download-artifact@v4
+        with:
+          name: alteracao-report
+          path: reports/
 
-      - name: Extrair métricas
+      - name: Extrair métricas por fase
         run: |
-          TOTAL=$(jq '.run.stats.assertions.total' report.json)
-          FAILED=$(jq '.run.stats.assertions.failed' report.json)
-          PASSED=$(jq '.run.stats.assertions.total - .run.stats.assertions.failed' report.json)
-          SUCCESS=$(awk "BEGIN {printf \"%.2f\", ($PASSED/$TOTAL)*100}")
+          extract() {
+            local file=$1
+            local prefix=$2
+            if [ -f "$file" ]; then
+              TOTAL=$(jq '.run.stats.assertions.total // 0' "$file")
+              FAILED=$(jq '.run.stats.assertions.failed // 0' "$file")
+              PASSED=$(jq '.run.stats.assertions.total - .run.stats.assertions.failed // 0' "$file")
+              if [ "$TOTAL" -gt 0 ]; then
+                SUCCESS=$(awk "BEGIN {printf \"%.2f\", ($PASSED/$TOTAL)*100}")
+              else
+                SUCCESS="0.00"
+              fi
+            else
+              TOTAL=0; FAILED=0; PASSED=0; SUCCESS="0.00"
+            fi
+            echo "${prefix}_TOTAL=$TOTAL"     >> $GITHUB_ENV
+            echo "${prefix}_FAILED=$FAILED"   >> $GITHUB_ENV
+            echo "${prefix}_PASSED=$PASSED"   >> $GITHUB_ENV
+            echo "${prefix}_SUCCESS=$SUCCESS" >> $GITHUB_ENV
+          }
 
-          echo "TOTAL=$TOTAL" >> $GITHUB_ENV
-          echo "FAILED=$FAILED" >> $GITHUB_ENV
-          echo "PASSED=$PASSED" >> $GITHUB_ENV
-          echo "SUCCESS=$SUCCESS" >> $GITHUB_ENV
+          extract reports/smoke-report.json      SMOKE
+          extract reports/validation-report.json VALIDATION
+          extract reports/business-report.json   BUSINESS
+          extract reports/alteracao-report.json  ALTERACAO
+
+          # Totais consolidados
+          T=$(( ${SMOKE_TOTAL:-0} + ${VALIDATION_TOTAL:-0} + ${BUSINESS_TOTAL:-0} + ${ALTERACAO_TOTAL:-0} ))
+          F=$(( ${SMOKE_FAILED:-0} + ${VALIDATION_FAILED:-0} + ${BUSINESS_FAILED:-0} + ${ALTERACAO_FAILED:-0} ))
+          P=$(( T - F ))
+          if [ "$T" -gt 0 ]; then
+            S=$(awk "BEGIN {printf \"%.2f\", ($P/$T)*100}")
+          else
+            S="0.00"
+          fi
+          echo "TOTAL=$T"   >> $GITHUB_ENV
+          echo "FAILED=$F"  >> $GITHUB_ENV
+          echo "PASSED=$P"  >> $GITHUB_ENV
+          echo "SUCCESS=$S" >> $GITHUB_ENV
 
       - name: Gerar timestamp
         run: echo "DATE=$(date +'%Y-%m-%d_%H-%M-%S')" >> $GITHUB_ENV
 
-      - name: Criar estrutura
+      - name: Criar estrutura de pastas
         run: mkdir -p public/$DATE
 
-      - name: Gerar details.json
+      - name: Gerar details.json por fase
         run: |
-          jq '{
-            summary: .run.stats,
-            failures: .run.failures,
-            executions: .run.executions
-          }' report.json > public/$DATE/details.json
+          build_detail() {
+            local file=$1
+            local out=$2
+            if [ -f "$file" ]; then
+              jq '{
+                summary: .run.stats,
+                failures: .run.failures,
+                executions: [.run.executions[] | {
+                  name: .item.name,
+                  passed: ([.assertions[] | select(.error == null)] | length),
+                  failed: ([.assertions[] | select(.error != null)] | length),
+                  assertions: [.assertions[] | {name: .assertion, passed: (.error == null), error: .error.message}]
+                }]
+              }' "$file" > "$out" 2>/dev/null || echo '{}' > "$out"
+            else
+              echo '{}' > "$out"
+            fi
+          }
+
+          build_detail reports/smoke-report.json      public/$DATE/smoke.json
+          build_detail reports/validation-report.json public/$DATE/validation.json
+          build_detail reports/business-report.json   public/$DATE/business.json
+          build_detail reports/alteracao-report.json  public/$DATE/alteracao.json
 
       - name: Atualizar history.json
         run: |
           FILE=public/history.json
-          if [ ! -f "$FILE" ]; then
-            echo "[]" > $FILE
-          fi
+          [ ! -f "$FILE" ] && echo "[]" > $FILE
 
           jq ". += [{
             \"date\": \"$DATE\",
@@ -154,165 +231,430 @@ jobs:
             \"failed\": $FAILED,
             \"passed\": $PASSED,
             \"total\": $TOTAL,
-            \"success\": $SUCCESS
+            \"success\": \"$SUCCESS\",
+            \"phases\": {
+              \"smoke\":      {\"passed\": $SMOKE_PASSED,      \"failed\": $SMOKE_FAILED,      \"total\": $SMOKE_TOTAL,      \"success\": \"$SMOKE_SUCCESS\"},
+              \"validation\": {\"passed\": $VALIDATION_PASSED, \"failed\": $VALIDATION_FAILED, \"total\": $VALIDATION_TOTAL, \"success\": \"$VALIDATION_SUCCESS\"},
+              \"business\":   {\"passed\": $BUSINESS_PASSED,   \"failed\": $BUSINESS_FAILED,   \"total\": $BUSINESS_TOTAL,   \"success\": \"$BUSINESS_SUCCESS\"},
+              \"alteracao\":  {\"passed\": $ALTERACAO_PASSED,  \"failed\": $ALTERACAO_FAILED,  \"total\": $ALTERACAO_TOTAL,  \"success\": \"$ALTERACAO_SUCCESS\"}
+            }
           }]" $FILE > tmp.json && mv tmp.json $FILE
 
-      - name: Criar index.html profissional
+      - name: Gerar index.html
         run: |
-          cat << 'EOF' > public/index.html
+          cat << 'HTMLEOF' > public/index.html
           <!DOCTYPE html>
           <html lang="pt-BR">
           <head>
-              <meta charset="UTF-8">
-              <title>API Quality Dashboard</title>
-              <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-              <style>
-                  body {
-                      margin:0;
-                      font-family: 'Segoe UI', sans-serif;
-                      background:#0f172a;
-                      color:#e2e8f0;
-                  }
-                  header {
-                      padding:30px;
-                      font-size:24px;
-                      font-weight:600;
-                  }
-                  .container {
-                      padding:30px;
-                  }
-                  .cards {
-                      display:grid;
-                      grid-template-columns: repeat(auto-fit,minmax(200px,1fr));
-                      gap:20px;
-                      margin-bottom:40px;
-                  }
-                  .card {
-                      background:#1e293b;
-                      padding:20px;
-                      border-radius:12px;
-                      box-shadow:0 0 20px rgba(0,0,0,.3);
-                  }
-                  .card h2 {
-                      margin:0;
-                      font-size:14px;
-                      color:#94a3b8;
-                  }
-                  .card p {
-                      margin:10px 0 0 0;
-                      font-size:28px;
-                      font-weight:bold;
-                  }
-                  .green { color:#22c55e; }
-                  .red { color:#ef4444; }
-                  .blue { color:#38bdf8; }
-                  .orange { color:#f97316; }
-                  .section {
-                      margin-top:50px;
-                  }
-                  table {
-                      width:100%;
-                      border-collapse: collapse;
-                  }
-                  table tr {
-                      border-bottom:1px solid #1e293b;
-                  }
-                  table td {
-                      padding:10px;
-                  }
-                  .badge-ok { color:#22c55e; }
-                  .badge-fail { color:#ef4444; }
-              </style>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>API Quality Dashboard</title>
+            <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+            <style>
+              *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+              :root {
+                --bg:       #0f172a;
+                --surface:  #1e293b;
+                --border:   #334155;
+                --text:     #e2e8f0;
+                --muted:    #64748b;
+                --green:    #22c55e;
+                --red:      #ef4444;
+                --blue:     #38bdf8;
+                --orange:   #f97316;
+                --purple:   #a855f7;
+              }
+
+              body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; }
+
+              /* ---- top bar ---- */
+              .topbar {
+                background: var(--surface);
+                border-bottom: 1px solid var(--border);
+                padding: 14px 28px;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+              }
+              .logo { font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+              .dot  { width: 9px; height: 9px; border-radius: 50%; background: var(--green); }
+              .run-badge {
+                font-size: 11px;
+                background: #14532d33;
+                color: var(--green);
+                border: 1px solid #22c55e44;
+                padding: 3px 10px;
+                border-radius: 20px;
+              }
+              .last-run { font-size: 11px; color: var(--muted); }
+
+              /* ---- layout ---- */
+              .main { padding: 24px 28px; max-width: 1100px; margin: 0 auto; }
+              .section-label { font-size: 10px; font-weight: 600; color: var(--muted); letter-spacing: .09em; text-transform: uppercase; margin-bottom: 12px; }
+
+              /* ---- summary cards ---- */
+              .summary { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 28px; }
+              .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
+              .card-label { font-size: 11px; color: var(--muted); font-weight: 500; margin-bottom: 6px; }
+              .card-val  { font-size: 28px; font-weight: 700; }
+              .card-sub  { font-size: 10px; color: var(--muted); margin-top: 4px; }
+              .pbar { height: 4px; background: #0f172a; border-radius: 2px; overflow: hidden; margin-top: 8px; }
+              .pbar-fill { height: 100%; border-radius: 2px; }
+
+              /* ---- two-col row ---- */
+              .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+              .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+              .panel-title { font-size: 13px; font-weight: 600; color: #94a3b8; margin-bottom: 16px; }
+
+              /* ---- phases ---- */
+              .phase-row { display: grid; grid-template-columns: 100px 1fr 60px 60px; align-items: center; gap: 10px; margin-bottom: 12px; }
+              .phase-name { font-size: 12px; color: #94a3b8; }
+              .phase-bg { height: 7px; background: #0f172a; border-radius: 4px; overflow: hidden; }
+              .phase-fill { height: 100%; border-radius: 4px; transition: width .4s; }
+              .phase-pct { font-size: 12px; font-weight: 600; }
+              .phase-cnt { font-size: 11px; color: var(--muted); }
+
+              /* ---- history table ---- */
+              .history-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 24px; }
+              table { width: 100%; border-collapse: collapse; }
+              thead th { font-size: 10px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .07em; padding: 0 10px 10px; text-align: left; }
+              tbody td { font-size: 12px; padding: 9px 10px; border-top: 1px solid #1e293b; color: #cbd5e1; vertical-align: middle; }
+              tbody tr:hover td { background: #ffffff08; cursor: pointer; }
+              .badge { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 600; padding: 3px 8px; border-radius: 20px; }
+              .ok   { background: #14532d33; color: var(--green); border: 1px solid #22c55e44; }
+              .fail { background: #450a0a33; color: var(--red);   border: 1px solid #ef444444; }
+              .phase-icon { font-size: 13px; }
+              .link-btn { font-size: 11px; color: var(--blue); cursor: pointer; text-decoration: none; background: none; border: none; padding: 0; }
+              .link-btn:hover { text-decoration: underline; }
+
+              /* ---- detail panel ---- */
+              #detail-panel { display: none; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 24px; }
+              .detail-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+              .detail-tabs { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+              .tab-btn {
+                font-size: 12px; padding: 5px 14px; border-radius: 20px;
+                border: 1px solid var(--border); background: transparent; color: var(--muted); cursor: pointer;
+              }
+              .tab-btn.active { border-color: var(--blue); color: var(--blue); background: #0c1a2a; }
+              .test-list { max-height: 320px; overflow-y: auto; }
+              .test-row { display: flex; align-items: flex-start; gap: 8px; padding: 8px 0; border-bottom: 1px solid #1e293b; }
+              .test-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 4px; flex-shrink: 0; }
+              .test-name { font-size: 12px; color: #cbd5e1; }
+              .test-err  { font-size: 11px; color: var(--red); margin-top: 2px; }
+              .test-pass { font-size: 11px; color: var(--muted); margin-top: 2px; }
+              .close-btn { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 16px; }
+              .close-btn:hover { color: var(--text); }
+              .empty-msg { font-size: 12px; color: var(--muted); padding: 20px 0; text-align: center; }
+
+              /* ---- chart container ---- */
+              .chart-box { position: relative; height: 160px; }
+
+              /* ---- colors ---- */
+              .c-green  { color: var(--green); }
+              .c-red    { color: var(--red); }
+              .c-blue   { color: var(--blue); }
+              .c-orange { color: var(--orange); }
+              .c-purple { color: var(--purple); }
+              .c-muted  { color: var(--muted); }
+            </style>
           </head>
           <body>
-              <header>API Quality Dashboard</header>
-              <div class="container">
 
-                  <div class="cards">
-                      <div class="card">
-                          <h2>PASSOU</h2>
-                          <p class="green" id="passed">-</p>
-                      </div>
-                      <div class="card">
-                          <h2>FALHOU</h2>
-                          <p class="red" id="failed">-</p>
-                      </div>
-                      <div class="card">
-                          <h2>TOTAL</h2>
-                          <p class="blue" id="total">-</p>
-                      </div>
-                      <div class="card">
-                          <h2>TAXA DE SUCESSO</h2>
-                          <p class="orange" id="success">-</p>
-                      </div>
-                  </div>
+          <div class="topbar">
+            <div class="logo"><div class="dot"></div>API Quality Dashboard · Pedido Catálogo</div>
+            <div style="display:flex;align-items:center;gap:12px">
+              <span class="last-run" id="last-run">—</span>
+              <span class="run-badge" id="run-badge">carregando…</span>
+            </div>
+          </div>
 
-                  <div class="section">
-                      <canvas id="chart"></canvas>
-                  </div>
+          <div class="main">
 
-                  <div class="section">
-                      <h3>Histórico de Execuções</h3>
-                      <table id="history"></table>
-                  </div>
-
+            <!-- Summary cards -->
+            <div class="section-label" style="margin-top:8px">Resumo da última execução</div>
+            <div class="summary">
+              <div class="card">
+                <div class="card-label">PASSOU</div>
+                <div class="card-val c-green" id="s-passed">—</div>
+                <div class="pbar"><div class="pbar-fill" id="pbar-p" style="background:var(--green)"></div></div>
               </div>
+              <div class="card">
+                <div class="card-label">FALHOU</div>
+                <div class="card-val c-red" id="s-failed">—</div>
+                <div class="pbar"><div class="pbar-fill" id="pbar-f" style="background:var(--red)"></div></div>
+              </div>
+              <div class="card">
+                <div class="card-label">TOTAL</div>
+                <div class="card-val c-blue" id="s-total">—</div>
+                <div class="card-sub">assertions</div>
+              </div>
+              <div class="card">
+                <div class="card-label">TAXA DE SUCESSO</div>
+                <div class="card-val c-orange" id="s-success">—</div>
+                <div class="card-sub" id="s-trend">—</div>
+              </div>
+            </div>
 
-              <script>
-                  fetch('history.json')
-                  .then(r=>r.json())
-                  .then(data=>{
-                      if(!data.length) return;
+            <!-- Chart + Phases -->
+            <div class="row2">
+              <div class="panel">
+                <div class="panel-title">Histórico de sucesso (%)</div>
+                <div class="chart-box"><canvas id="history-chart"></canvas></div>
+              </div>
+              <div class="panel">
+                <div class="panel-title">Por fase de teste</div>
+                <div id="phases-wrap"></div>
+              </div>
+            </div>
 
-                      const last = data[data.length-1];
+            <!-- Detail panel (hidden by default) -->
+            <div id="detail-panel">
+              <div class="detail-header">
+                <div>
+                  <div class="panel-title" id="detail-title">Detalhes da execução</div>
+                  <div style="font-size:11px;color:var(--muted)" id="detail-date"></div>
+                </div>
+                <button class="close-btn" onclick="closeDetail()">✕</button>
+              </div>
+              <div class="detail-tabs" id="detail-tabs"></div>
+              <div class="test-list" id="detail-list"></div>
+            </div>
 
-                      document.getElementById("passed").innerText = last.passed;
-                      document.getElementById("failed").innerText = last.failed;
-                      document.getElementById("total").innerText = last.total;
-                      document.getElementById("success").innerText = last.success + "%";
+            <!-- History table -->
+            <div class="section-label">Histórico de execuções</div>
+            <div class="history-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Data / Hora</th>
+                    <th>Status</th>
+                    <th>Smoke</th>
+                    <th>Validation</th>
+                    <th>Business</th>
+                    <th>Alteração</th>
+                    <th>Total</th>
+                    <th>Sucesso</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="history-body"></tbody>
+              </table>
+            </div>
 
-                      const labels = data.map(x=>x.date);
-                      const successData = data.map(x=>x.success);
+          </div>
 
-                      new Chart(document.getElementById("chart"),{
-                          type:'line',
-                          data:{
-                              labels:labels,
-                              datasets:[{
-                                  label:'Taxa de Sucesso (%)',
-                                  data:successData,
-                                  borderColor:'#22c55e',
-                                  tension:.3
-                              }]
-                          }
-                      });
+          <script>
+          const PHASE_COLORS = {
+            smoke:      '#22c55e',
+            validation: '#38bdf8',
+            business:   '#f97316',
+            alteracao:  '#a855f7'
+          };
+          const PHASE_LABELS = {
+            smoke: 'Smoke', validation: 'Validation', business: 'Business Rule', alteracao: 'Alteração'
+          };
 
-                      let html="";
-                      data.slice().reverse().forEach(run=>{
-                          const status = run.failed==0 ? 
-                              "<span class='badge-ok'>✔ OK</span>" :
-                              "<span class='badge-fail'>✖ FALHA</span>";
+          let historyData = [];
+          let detailCache = {};
+          let activeRun = null;
+          let activePhase = 'smoke';
+          let chart = null;
 
-                          html+=`
-                              <tr>
-                                  <td>${run.date}</td>
-                                  <td>${status}</td>
-                                  <td>${run.success}%</td>
-                              </tr>
-                          `;
-                      });
+          async function loadHistory() {
+            const r = await fetch('history.json');
+            historyData = await r.json();
+            if (!historyData.length) return;
+            renderSummary();
+            renderPhases();
+            renderChart();
+            renderTable();
+          }
 
-                      document.getElementById("history").innerHTML=html;
-                  });
-              </script>
+          function renderSummary() {
+            const last = historyData[historyData.length - 1];
+            document.getElementById('s-passed').textContent  = last.passed;
+            document.getElementById('s-failed').textContent  = last.failed;
+            document.getElementById('s-total').textContent   = last.total;
+            document.getElementById('s-success').textContent = last.success + '%';
+            document.getElementById('last-run').textContent  = 'Última: ' + fmt(last.date);
+            document.getElementById('run-badge').textContent = last.failed == 0 ? '● OK' : '● FALHA';
+            document.getElementById('run-badge').style.color = last.failed == 0 ? '#22c55e' : '#ef4444';
+
+            const pct = parseFloat(last.success);
+            document.getElementById('pbar-p').style.width = pct + '%';
+            document.getElementById('pbar-f').style.width = (100 - pct) + '%';
+
+            if (historyData.length > 1) {
+              const prev = historyData[historyData.length - 2];
+              const diff = parseFloat(last.success) - parseFloat(prev.success);
+              const el = document.getElementById('s-trend');
+              el.textContent = diff >= 0 ? '↑ +' + diff.toFixed(2) + '% vs anterior' : '↓ ' + diff.toFixed(2) + '% vs anterior';
+              el.style.color = diff >= 0 ? '#22c55e' : '#ef4444';
+            }
+          }
+
+          function renderPhases() {
+            const last = historyData[historyData.length - 1];
+            const phases = last.phases || {};
+            const wrap = document.getElementById('phases-wrap');
+            wrap.innerHTML = '';
+            ['smoke','validation','business','alteracao'].forEach(k => {
+              const ph = phases[k] || {};
+              const pct = parseFloat(ph.success || 0);
+              const color = PHASE_COLORS[k];
+              wrap.innerHTML += `
+                <div class="phase-row">
+                  <div class="phase-name">${PHASE_LABELS[k]}</div>
+                  <div class="phase-bg"><div class="phase-fill" style="width:${pct}%;background:${color}"></div></div>
+                  <div class="phase-pct" style="color:${color}">${pct.toFixed(0)}%</div>
+                  <div class="phase-cnt">${ph.passed||0}/${ph.total||0}</div>
+                </div>`;
+            });
+          }
+
+          function renderChart() {
+            const labels = historyData.map(x => fmtShort(x.date));
+            const values = historyData.map(x => parseFloat(x.success));
+            if (chart) chart.destroy();
+            chart = new Chart(document.getElementById('history-chart'), {
+              type: 'line',
+              data: {
+                labels,
+                datasets: [{
+                  label: 'Sucesso (%)',
+                  data: values,
+                  borderColor: '#22c55e',
+                  backgroundColor: '#22c55e18',
+                  fill: true,
+                  tension: .3,
+                  pointRadius: 4,
+                  pointBackgroundColor: values.map(v => v === 100 ? '#22c55e' : v < 80 ? '#ef4444' : '#f97316')
+                }]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                  x: { ticks: { color: '#64748b', font: { size: 10 } }, grid: { color: '#1e293b' } },
+                  y: { min: 0, max: 100, ticks: { color: '#64748b', font: { size: 10 } }, grid: { color: '#1e293b' } }
+                }
+              }
+            });
+          }
+
+          function renderTable() {
+            const tbody = document.getElementById('history-body');
+            tbody.innerHTML = '';
+            [...historyData].reverse().forEach(run => {
+              const ok = parseInt(run.failed) === 0;
+              const ph = run.phases || {};
+              const phIcon = k => {
+                const p = ph[k] || {};
+                return parseInt(p.failed||0) === 0
+                  ? `<span class="c-green">✔</span>`
+                  : `<span class="c-red">✖</span>`;
+              };
+              const tr = document.createElement('tr');
+              tr.innerHTML = `
+                <td>${fmt(run.date)}</td>
+                <td><span class="badge ${ok ? 'ok' : 'fail'}">${ok ? '✔ OK' : '✖ FALHA'}</span></td>
+                <td>${phIcon('smoke')}</td>
+                <td>${phIcon('validation')}</td>
+                <td>${phIcon('business')}</td>
+                <td>${phIcon('alteracao')}</td>
+                <td>${run.total}</td>
+                <td style="color:${ok?'#22c55e':'#ef4444'}">${run.success}%</td>
+                <td><button class="link-btn" onclick="openDetail('${run.folder}','${run.date}')">ver →</button></td>`;
+              tbody.appendChild(tr);
+            });
+          }
+
+          async function openDetail(folder, date) {
+            activeRun = folder;
+            activePhase = 'smoke';
+            document.getElementById('detail-panel').style.display = 'block';
+            document.getElementById('detail-title').textContent = 'Detalhes da execução';
+            document.getElementById('detail-date').textContent = fmt(date);
+            renderTabs();
+            await loadPhaseDetail(activePhase);
+            document.getElementById('detail-panel').scrollIntoView({ behavior: 'smooth' });
+          }
+
+          function closeDetail() {
+            document.getElementById('detail-panel').style.display = 'none';
+            activeRun = null;
+          }
+
+          function renderTabs() {
+            const wrap = document.getElementById('detail-tabs');
+            wrap.innerHTML = ['smoke','validation','business','alteracao'].map(k =>
+              `<button class="tab-btn ${k === activePhase ? 'active' : ''}" onclick="switchTab('${k}')">${PHASE_LABELS[k]}</button>`
+            ).join('');
+          }
+
+          async function switchTab(phase) {
+            activePhase = phase;
+            renderTabs();
+            await loadPhaseDetail(phase);
+          }
+
+          async function loadPhaseDetail(phase) {
+            const key = `${activeRun}/${phase}`;
+            if (!detailCache[key]) {
+              try {
+                const r = await fetch(`${activeRun}/${phase}.json`);
+                detailCache[key] = await r.json();
+              } catch { detailCache[key] = null; }
+            }
+            renderDetailList(detailCache[key]);
+          }
+
+          function renderDetailList(data) {
+            const list = document.getElementById('detail-list');
+            if (!data || !data.executions || !data.executions.length) {
+              list.innerHTML = '<div class="empty-msg">Nenhum dado disponível para esta fase.</div>';
+              return;
+            }
+            let html = '';
+            data.executions.forEach(ex => {
+              const ok = ex.failed === 0;
+              html += `<div class="test-row">
+                <div class="test-dot" style="background:${ok?'#22c55e':'#ef4444'}"></div>
+                <div>
+                  <div class="test-name">${ex.name}</div>
+                  <div class="${ok?'test-pass':'test-err'}">${ok ? ex.passed + ' assertions passaram' : ex.failed + ' falha(s) · ' + ex.passed + ' passaram'}</div>
+                  ${!ok && ex.assertions ? ex.assertions.filter(a=>!a.passed).map(a=>`<div class="test-err" style="margin-top:2px">↳ ${a.name}: ${a.error||''}</div>`).join('') : ''}
+                </div>
+              </div>`;
+            });
+            list.innerHTML = html;
+          }
+
+          function fmt(d) {
+            if (!d) return '—';
+            return d.replace('_', ' ').replace(/_/g, ':');
+          }
+          function fmtShort(d) {
+            if (!d) return '';
+            const parts = d.split('_');
+            if (parts.length < 2) return d;
+            const datePart = parts[0].slice(5);
+            return datePart;
+          }
+
+          loadHistory();
+          </script>
+
           </body>
           </html>
-          EOF
+          HTMLEOF
 
-      - name: Verificar arquivos antes do deploy
+      - name: Verificar arquivos
         run: |
-          echo "Conteúdo da pasta public:"
-          ls -la public
+          echo "=== public/ ===" && ls -la public/
+          echo "=== public/$DATE ===" && ls -la public/$DATE/ || true
 
       - name: Publicar no GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
