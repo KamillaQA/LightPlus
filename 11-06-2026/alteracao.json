@@ -49,7 +49,7 @@
   "failures": [],
   "executions": [
     {
-      "name": "@PED_CAT-4.2 @business - Alteração após aprovar o pedido",
+      "name": "@PED_CAT-4.4 @business – Alteração de pedido reprovado",
       "passed": 6,
       "failed": 0,
       "assertions": [
@@ -59,12 +59,17 @@
           "error": null
         },
         {
-          "name": "Retorno deve conter envelope de negocio",
+          "name": "Envelope Mensagem existe",
           "passed": true,
           "error": null
         },
         {
-          "name": "Tipo da mensagem deve ser warning",
+          "name": "Envelope Requisicao existe",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Mensagem.Tipo deve ser warning",
           "passed": true,
           "error": null
         },
@@ -74,19 +79,14 @@
           "error": null
         },
         {
-          "name": "Critica deve mencionar alteracao nao permitida por status",
-          "passed": true,
-          "error": null
-        },
-        {
-          "name": "Critica deve mencionar restricao por status",
+          "name": "Critica deve mencionar NumeroPedidoWebsupply nao localizado",
           "passed": true,
           "error": null
         }
       ]
     },
     {
-      "name": "@PED_CAT-4.2 @business - Alteração após devolver o pedido",
+      "name": "@PED_CAT_MAT -4.1 @alteracao - Pedido de Material",
       "passed": 10,
       "failed": 0,
       "assertions": [
@@ -180,7 +180,81 @@
       ]
     },
     {
-      "name": "@PED_CAT_MAT -4.1 @alteracao - Pedido de Material",
+      "name": "@PED_CAT-4.2 @business - Alteração após reprovação do pedido",
+      "passed": 6,
+      "failed": 0,
+      "assertions": [
+        {
+          "name": "Status HTTP deve ser 400",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Retorno deve conter envelope de negocio",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Tipo da mensagem deve ser warning",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Deve conter CriticasNegocio",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Critica deve mencionar alteracao nao permitida por status",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Critica deve mencionar restricao por status",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "name": "@PED_CAT-4.2 @business - Alteração após aprovar o pedido",
+      "passed": 6,
+      "failed": 0,
+      "assertions": [
+        {
+          "name": "Status HTTP deve ser 400",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Retorno deve conter envelope de negocio",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Tipo da mensagem deve ser warning",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Deve conter CriticasNegocio",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Critica deve mencionar alteracao nao permitida por status",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Critica deve mencionar restricao por status",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "name": "@PED_CAT-4.2 @business - Alteração após devolver o pedido",
       "passed": 10,
       "failed": 0,
       "assertions": [
@@ -294,43 +368,6 @@
       ]
     },
     {
-      "name": "@PED_CAT-4.4 @business – Alteração de pedido reprovado",
-      "passed": 6,
-      "failed": 0,
-      "assertions": [
-        {
-          "name": "Status HTTP deve ser 400",
-          "passed": true,
-          "error": null
-        },
-        {
-          "name": "Envelope Mensagem existe",
-          "passed": true,
-          "error": null
-        },
-        {
-          "name": "Envelope Requisicao existe",
-          "passed": true,
-          "error": null
-        },
-        {
-          "name": "Mensagem.Tipo deve ser warning",
-          "passed": true,
-          "error": null
-        },
-        {
-          "name": "Deve conter CriticasNegocio",
-          "passed": true,
-          "error": null
-        },
-        {
-          "name": "Critica deve mencionar NumeroPedidoWebsupply nao localizado",
-          "passed": true,
-          "error": null
-        }
-      ]
-    },
-    {
       "name": "@PED_CAT-4.1 @business- Alteracao com usuário não existente",
       "passed": 5,
       "failed": 0,
@@ -357,43 +394,6 @@
         },
         {
           "name": "Critica deve mencionar usuario nao localizado no cabecalho",
-          "passed": true,
-          "error": null
-        }
-      ]
-    },
-    {
-      "name": "@PED_CAT-4.2 @business - Alteração após reprovação do pedido",
-      "passed": 6,
-      "failed": 0,
-      "assertions": [
-        {
-          "name": "Status HTTP deve ser 400",
-          "passed": true,
-          "error": null
-        },
-        {
-          "name": "Retorno deve conter envelope de negocio",
-          "passed": true,
-          "error": null
-        },
-        {
-          "name": "Tipo da mensagem deve ser warning",
-          "passed": true,
-          "error": null
-        },
-        {
-          "name": "Deve conter CriticasNegocio",
-          "passed": true,
-          "error": null
-        },
-        {
-          "name": "Critica deve mencionar alteracao nao permitida por status",
-          "passed": true,
-          "error": null
-        },
-        {
-          "name": "Critica deve mencionar restricao por status",
           "passed": true,
           "error": null
         }
