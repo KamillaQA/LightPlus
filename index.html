@@ -274,7 +274,7 @@ function renderTable() {
     };
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td>${fmt(run.date)}</td>
+      <td>${fmtRow(run.date, run.folder)}</td>
       <td><span class="badge ${ok ? 'ok' : 'fail'}">${ok ? '✔ OK' : '✖ FALHA'}</span></td>
       <td>${phIcon('smoke')}</td>
       <td>${phIcon('validation')}</td>
@@ -350,8 +350,19 @@ function renderDetailList(data) {
 
 function fmt(d) {
   if (!d) return '—';
-  // Formato gerado: DD-MM-YYYY
-  return d.split('_')[0];
+  // d pode ser o date (DD-MM-YYYY) ou o folder (DD-MM-YYYY_HH-MM-SS)
+  const [datePart, timePart] = d.split('_');
+  if (!timePart) return datePart;
+  const hora = timePart.replace(/-/g, ':');
+  return datePart + ' ' + hora;
+}
+
+function fmtRow(date, folder) {
+  // Exibe a data do campo date e a hora do campo folder
+  const datePart = date.split('_')[0];
+  const timePart = folder.split('_')[1];
+  if (!timePart) return datePart;
+  return datePart + ' ' + timePart.replace(/-/g, ':');
 }
 
 loadHistory();

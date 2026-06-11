@@ -49,63 +49,6 @@
   "failures": [],
   "executions": [
     {
-      "name": "@PED_CAT-4.2 @business - Alteração após devolver o pedido",
-      "passed": 10,
-      "failed": 0,
-      "assertions": [
-        {
-          "name": "Status HTTP deve ser 200",
-          "passed": true,
-          "error": null
-        },
-        {
-          "name": "Envelope Mensagem existe",
-          "passed": true,
-          "error": null
-        },
-        {
-          "name": "Envelope Requisicao existe",
-          "passed": true,
-          "error": null
-        },
-        {
-          "name": "Mensagem.Titulo deve ser 'Sucesso'",
-          "passed": true,
-          "error": null
-        },
-        {
-          "name": "Mensagem.Tipo deve ser success",
-          "passed": true,
-          "error": null
-        },
-        {
-          "name": "Requisicao.Retorno existe",
-          "passed": true,
-          "error": null
-        },
-        {
-          "name": "NumeroPedidoWebsupply retornado",
-          "passed": true,
-          "error": null
-        },
-        {
-          "name": "NumeroPedidoLight preservado corretamente",
-          "passed": true,
-          "error": null
-        },
-        {
-          "name": "GuidProcessamento retornado",
-          "passed": true,
-          "error": null
-        },
-        {
-          "name": "Status interno deve ser 200",
-          "passed": true,
-          "error": null
-        }
-      ]
-    },
-    {
       "name": "@PED_CAT-4.1 @business- Alteracao com usuário não existente",
       "passed": 5,
       "failed": 0,
@@ -138,44 +81,7 @@
       ]
     },
     {
-      "name": "@PED_CAT-4.2 @business - Alteração após reprovação do pedido",
-      "passed": 6,
-      "failed": 0,
-      "assertions": [
-        {
-          "name": "Status HTTP deve ser 400",
-          "passed": true,
-          "error": null
-        },
-        {
-          "name": "Retorno deve conter envelope de negocio",
-          "passed": true,
-          "error": null
-        },
-        {
-          "name": "Tipo da mensagem deve ser warning",
-          "passed": true,
-          "error": null
-        },
-        {
-          "name": "Deve conter CriticasNegocio",
-          "passed": true,
-          "error": null
-        },
-        {
-          "name": "Critica deve mencionar alteracao nao permitida por status",
-          "passed": true,
-          "error": null
-        },
-        {
-          "name": "Critica deve mencionar restricao por status",
-          "passed": true,
-          "error": null
-        }
-      ]
-    },
-    {
-      "name": "@PED_CAT_MAT -4.1 @alteracao - Pedido de Material",
+      "name": "@PED_CAT-4.2 @business - Alteração após devolver o pedido",
       "passed": 10,
       "failed": 0,
       "assertions": [
@@ -269,7 +175,7 @@
       ]
     },
     {
-      "name": "@PED_CAT-4.1 @alteracao - NumeroPedidoWebsupply inexistente",
+      "name": "@PED_CAT-4.2 @business - Alteração após aprovar o pedido",
       "passed": 6,
       "failed": 0,
       "assertions": [
@@ -289,24 +195,24 @@
           "error": null
         },
         {
-          "name": "Nao deve seguir padrao RFC estrutural",
-          "passed": true,
-          "error": null
-        },
-        {
           "name": "Deve conter CriticasNegocio",
           "passed": true,
           "error": null
         },
         {
-          "name": "Critica deve mencionar NumeroPedidoWebsupply nao localizado",
+          "name": "Critica deve mencionar alteracao nao permitida por status",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Critica deve mencionar restricao por status",
           "passed": true,
           "error": null
         }
       ]
     },
     {
-      "name": "@PED_CAT-4.2 @business - Alteração após aprovar o pedido",
+      "name": "@PED_CAT-4.2 @business - Alteração após reprovação do pedido",
       "passed": 6,
       "failed": 0,
       "assertions": [
@@ -394,6 +300,100 @@
         },
         {
           "name": "Status interno deve ser 200",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "name": "@PED_CAT_MAT -4.1 @alteracao - Pedido de Material",
+      "passed": 10,
+      "failed": 0,
+      "assertions": [
+        {
+          "name": "Status HTTP deve ser 200",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Envelope Mensagem existe",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Envelope Requisicao existe",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Mensagem.Titulo deve ser 'Sucesso'",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Mensagem.Tipo deve ser success",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Requisicao.Retorno existe",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "NumeroPedidoWebsupply retornado",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "NumeroPedidoLight preservado corretamente",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "GuidProcessamento retornado",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Status interno deve ser 200",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "name": "@PED_CAT-4.1 @alteracao - NumeroPedidoWebsupply inexistente",
+      "passed": 6,
+      "failed": 0,
+      "assertions": [
+        {
+          "name": "Status HTTP deve ser 400",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Retorno deve conter envelope de negocio",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Tipo da mensagem deve ser warning",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Nao deve seguir padrao RFC estrutural",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Deve conter CriticasNegocio",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Critica deve mencionar NumeroPedidoWebsupply nao localizado",
           "passed": true,
           "error": null
         }
