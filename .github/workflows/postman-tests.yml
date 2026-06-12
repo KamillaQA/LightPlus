@@ -705,7 +705,7 @@ jobs:
           server_address: smtp.office365.com
           server_port: 587
           secure: false
-          tls: true
+          ignore_cert: true
           username: ${{ secrets.MAIL_USERNAME }}
           password: ${{ secrets.MAIL_PASSWORD }}
           to: ${{ secrets.MAIL_TO }}
